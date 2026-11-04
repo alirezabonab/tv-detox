@@ -160,10 +160,12 @@ public class MainActivity extends Activity {
         {0xFF2E6E4C, 0xFF1C4A40, 0xFF0A201E, 0x90A8E070, 0x6030A8A8},
         {0xFFB07624, 0xFF86401E, 0xFF2A1410, 0x90FFD060, 0x70FF5040},
     };
+    private final OnlineGallery onlineGallery = new OnlineGallery();
     private final Handler photoHandler = new Handler(Looper.getMainLooper());
     private final Runnable rotatePhoto = this::schedulePhotoRotation;
     private long slideshowStart = SystemClock.uptimeMillis();
-    private boolean homeResumed, wallpaperPickerOpen;
+    private long lastOnlineSlide = -1;
+    private boolean homeResumed, wallpaperPickerOpen, loadingOnlinePhoto;
     private String visibleWallpaper;
     private float scale = 1f;
 
@@ -312,6 +314,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         weather.close();
+        onlineGallery.close();
         unregisterReceiver(packagesChanged);
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm != null) try { cm.unregisterNetworkCallback(networkChanged); } catch (Exception ignored) {}
@@ -563,12 +566,37 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    private boolean isSlideshowVisible() {
+        return homeResumed && !wallpaperPickerOpen && SLIDESHOW.equals(wallpaper());
+    }
+
     private void schedulePhotoRotation() {
         photoHandler.removeCallbacks(rotatePhoto);
-        if (!homeResumed || wallpaperPickerOpen || !SLIDESHOW.equals(wallpaper())) return;
+        if (!isSlideshowVisible()) return;
         long now = SystemClock.uptimeMillis();
         long elapsed = now - slideshowStart;
-        showWallpaper(slideshowPhoto(elapsed));
+        long slide = elapsed / PHOTO_INTERVAL_MS;
+        if (!loadingOnlinePhoto && lastOnlineSlide != slide) {
+            loadingOnlinePhoto = true;
+            onlineGallery.load(slide, image -> {
+                loadingOnlinePhoto = false;
+                long currentElapsed = SystemClock.uptimeMillis() - slideshowStart;
+                if (!isSlideshowVisible() || currentElapsed / PHOTO_INTERVAL_MS != slide) {
+                    if (image != null) image.recycle();
+                    schedulePhotoRotation();
+                    return;
+                }
+                lastOnlineSlide = slide;
+                if (image == null) {
+                    showWallpaper(slideshowPhoto(currentElapsed));
+                } else {
+                    visibleWallpaper = "online:" + slide;
+                    BitmapDrawable drawable = new BitmapDrawable(getResources(), image);
+                    drawable.setGravity(Gravity.FILL);
+                    showPhotoBackground(drawable);
+                }
+            });
+        }
         photoHandler.postAtTime(rotatePhoto, now + PHOTO_INTERVAL_MS - elapsed % PHOTO_INTERVAL_MS);
     }
 
@@ -577,21 +605,28 @@ public class MainActivity extends Activity {
     }
 
     private void showWallpaper(String name) {
-        if (SLIDESHOW.equals(name)) name = slideshowPhoto(SystemClock.uptimeMillis() - slideshowStart);
+        if (SLIDESHOW.equals(name)) {
+            if (visibleWallpaper != null && visibleWallpaper.startsWith("online:")) return;
+            name = slideshowPhoto(SystemClock.uptimeMillis() - slideshowStart);
+        }
         if (name.equals(visibleWallpaper)) return;
         visibleWallpaper = name;
         int photoIndex = Arrays.asList(PHOTOS).indexOf(name);
         if (photoIndex >= 0) {
             BitmapDrawable image = photo(photoIndex, false);
             if (image != null) {
-                GradientDrawable shade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                        new int[] {0x50040712, 0x20040712, 0xA8040712});
-                getWindow().setBackgroundDrawable(new LayerDrawable(new Drawable[] {image, shade}));
+                showPhotoBackground(image);
                 return;
             }
         }
         int gradient = Arrays.asList(WALLPAPER_NAMES).indexOf(name);
         getWindow().setBackgroundDrawable(background(WALLPAPERS[Math.max(0, gradient)]));
+    }
+
+    private void showPhotoBackground(BitmapDrawable photo) {
+        GradientDrawable shade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] {0x50040712, 0x20040712, 0xA8040712});
+        getWindow().setBackgroundDrawable(new LayerDrawable(new Drawable[] {photo, shade}));
     }
 
     private List<String> wallpaperNames() {
@@ -631,12 +666,14 @@ public class MainActivity extends Activity {
             String selected = names.get(pos);
             if (SLIDESHOW.equals(selected) && !SLIDESHOW.equals(wallpaper())) {
                 slideshowStart = SystemClock.uptimeMillis();
+                lastOnlineSlide = -1;
             }
             prefs().edit().putString("wallpaper", selected).apply();
             showWallpaper(selected);
         });
         picker.setOnDismissListener(dialog -> {
             wallpaperPickerOpen = false;
+            if (visibleWallpaper == null || !visibleWallpaper.startsWith("online:")) lastOnlineSlide = -1;
             schedulePhotoRotation();
         });
     }
