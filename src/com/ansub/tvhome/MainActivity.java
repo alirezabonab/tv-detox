@@ -127,7 +127,7 @@ public class MainActivity extends Activity {
     private static final Interpolator FOCUS_EASE = new DecelerateInterpolator(1.8f);
     private static final int ROW1_TOP = 616, ROW_STEP = 166, TILE_WIDTH = 190;
     private static final long TILE_IDLE_MS = 12_000;
-    private static final int GRID_MIN_TOP = 400; // more rows push the grid up, but not into the clock
+    private static final int GRID_MIN_TOP = 500; // more rows push the grid up, but not into the clock
     private static final int ICON_TOP = 76, ICON_BUTTON = 72, ICON_SIZE = 40, ICON_GAP = 12; // level with the date
 
     // The Settings tile opens a small menu: the home screen's own settings, then the TV's.
@@ -173,6 +173,7 @@ public class MainActivity extends Activity {
     private FrameLayout tileGrid;
     private ScrollView scroller;
     private TextView tileToggle;
+    private WeatherCard weather;
     private boolean tilesExpanded;
     private final Runnable collapseTiles = () -> setTilesExpanded(false);
     private int tileW, gridLeft, gridTop; // app grid geometry, set by buildTiles
@@ -247,6 +248,10 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-2, -2);
         tp.topMargin = px(-20); // pull the big digits up under the date
         clock.addView(time, tp);
+        weather = new WeatherCard(this, scale, regular, semibold);
+        LinearLayout.LayoutParams weatherPosition = new LinearLayout.LayoutParams(px(300), -2);
+        weatherPosition.topMargin = px(18);
+        clock.addView(weather, weatherPosition);
         root.addView(clock, at(px(MARGIN), px(92), -2, -2));
 
         tileGrid = new FrameLayout(this);
@@ -299,6 +304,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        weather.close();
         unregisterReceiver(packagesChanged);
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm != null) try { cm.unregisterNetworkCallback(networkChanged); } catch (Exception ignored) {}
@@ -398,6 +404,7 @@ public class MainActivity extends Activity {
         refreshNetwork();
         homeResumed = true;
         schedulePhotoRotation();
+        weather.start();
         if (!tilesExpanded || getCurrentFocus() == null) tileToggle.requestFocus();
         resetTileTimeout();
         HomeButton.onHomeResumed(this); // back on this home screen: Home comes here again
@@ -412,6 +419,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         homeResumed = false;
+        weather.stop();
         photoHandler.removeCallbacks(rotatePhoto);
         tileToggle.removeCallbacks(collapseTiles);
         if (movingKey == null) setTilesExpanded(false);
