@@ -43,7 +43,7 @@ Claude Code or Codex does the work. You just press OK on the remote.
 
 This fork adds a photo gallery to the TV Detox launcher. The home screen starts with the clock and a translucent **Apps & inputs** button. Press **OK** to show the smaller app, HDMI and Settings tiles. The grid closes after 12 seconds without remote input. Press **Back** to close it sooner.
 
-The card under the clock shows current conditions in Stockholm in °C. It refreshes every 15 minutes while Home is open. Weather data comes from [Open-Meteo](https://open-meteo.com/).
+The weather text under the clock shows current conditions in Stockholm in °C. It refreshes every 15 minutes while Home is open. Weather data comes from [Open-Meteo](https://open-meteo.com/).
 
 Open **Apps & inputs → Settings → Wallpaper** to preview a photo or select **Photo slideshow**. The slideshow changes photos once a minute. The four photos are included in the build, so the gallery works offline.
 

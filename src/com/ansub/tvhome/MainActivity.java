@@ -249,8 +249,8 @@ public class MainActivity extends Activity {
         tp.topMargin = px(-20); // pull the big digits up under the date
         clock.addView(time, tp);
         weather = new WeatherCard(this, scale, regular, semibold);
-        LinearLayout.LayoutParams weatherPosition = new LinearLayout.LayoutParams(px(300), -2);
-        weatherPosition.topMargin = px(18);
+        LinearLayout.LayoutParams weatherPosition = new LinearLayout.LayoutParams(px(410), -2);
+        weatherPosition.topMargin = px(14);
         clock.addView(weather, weatherPosition);
         root.addView(clock, at(px(MARGIN), px(92), -2, -2));
 

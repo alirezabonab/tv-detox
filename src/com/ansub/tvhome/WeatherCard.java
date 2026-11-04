@@ -1,9 +1,7 @@
 package com.ansub.tvhome;
 
 import android.content.Context;
-import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -39,25 +37,17 @@ final class WeatherCard extends LinearLayout {
     WeatherCard(Context context, float scale, Typeface regular, Typeface semibold) {
         super(context);
         setOrientation(VERTICAL);
-        setPadding(Math.round(18 * scale), Math.round(9 * scale),
-                Math.round(18 * scale), Math.round(9 * scale));
-        GradientDrawable glass = new GradientDrawable();
-        glass.setColor(0x99101722);
-        glass.setCornerRadius(18 * scale);
-        glass.setStroke(Math.max(1, Math.round(scale)), 0x55FFFFFF);
-        setBackground(glass);
-
-        addView(label(17 * scale, 0xE6FFFFFF, regular, "Stockholm"));
+        addView(label(23 * scale, 0xBFFFFFFF, regular, "Stockholm"));
         LinearLayout reading = new LinearLayout(context);
         reading.setGravity(Gravity.CENTER_VERTICAL);
         addView(reading, new LayoutParams(-1, -2));
-        temperature = label(31 * scale, Color.WHITE, semibold, "—");
+        temperature = label(50 * scale, 0xD9FFFFFF, semibold, "—");
         reading.addView(temperature);
-        condition = label(19 * scale, 0xF0FFFFFF, regular, "Loading weather");
+        condition = label(27 * scale, 0xC7FFFFFF, regular, "Loading weather");
         LayoutParams conditionPosition = new LayoutParams(0, -2, 1);
         conditionPosition.leftMargin = Math.round(12 * scale);
         reading.addView(condition, conditionPosition);
-        credit = label(14 * scale, 0xCFFFFFFF, regular, "Open-Meteo");
+        credit = label(17 * scale, 0xA6FFFFFF, regular, "Open-Meteo");
         addView(credit);
     }
 
@@ -65,6 +55,7 @@ final class WeatherCard extends LinearLayout {
         TextView view = new TextView(getContext());
         view.setTextSize(TypedValue.COMPLEX_UNIT_PX, size);
         view.setTextColor(color);
+        view.setShadowLayer(size * 0.07f, 0, size * 0.035f, 0xB3000000);
         view.setTypeface(font);
         view.setIncludeFontPadding(false);
         view.setSingleLine(true);
