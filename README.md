@@ -27,7 +27,7 @@ Claude Code or Codex does the work. You just press OK on the remote.
 
 [All press coverage →](press.md)
 
-<img src="docs/home-screen.png" alt="The TV Detox home screen" width="100%">
+<img src="docs/home-screen.png" alt="The original TV Detox home screen" width="100%">
 
 </div>
 
@@ -38,6 +38,19 @@ Claude Code or Codex does the work. You just press OK on the remote.
 <td width="33%" valign="top"><b>↩️ Undo anytime</b><br>Apps are turned off, never deleted.</td>
 </tr>
 </table>
+
+## Astro Home
+
+This fork adds a photo gallery to the TV Detox launcher. The home screen starts with the clock and a translucent **Apps & inputs** button. Press **OK** to show the smaller app, HDMI and Settings tiles. The grid closes after 12 seconds without remote input. Press **Back** to close it sooner.
+
+Open **Apps & inputs → Settings → Wallpaper** to preview a photo or select **Photo slideshow**. The slideshow changes photos once a minute. The four photos are included in the build, so the gallery works offline.
+
+- [Milky Way by Dns Dgn](https://unsplash.com/photos/9wH624ALFQA)
+- [Northern Lights by v2osk](https://unsplash.com/photos/Lu8venMswmc)
+- [Andromeda by Scott Lord](https://unsplash.com/photos/ouTYTlOxTFY)
+- [Orion Nebula by Bryan Goff](https://unsplash.com/photos/f7YQo-eYHdM)
+
+The photos are available under the [Unsplash License](https://unsplash.com/license). Astro Home has its own Android package, `com.ansub.tvhome.astro`. Build it with `sh build.sh` before you install it, and keep your signing key for future updates.
 
 ## Watch it work
 
@@ -83,8 +96,8 @@ My TV is a <brand and model>.
    (com.google.android.apps.tv.launcherx). If you're not
    sure, leave it on.
 6. Install the home screen: download
-   https://github.com/Ansub/tv-detox and run its
-   install.sh with my TV and these apps: <your apps>.
+   https://github.com/alirezabonab/tv-detox/tree/astro-home,
+   run build.sh, then run install.sh with my TV and these apps: <your apps>.
 7. Turn off animations and make the TV sleep after 5
    minutes. Then check the model name and ask me if the TV
    is OLED. Keep the screensaver on unless I say it's not
@@ -190,11 +203,11 @@ If the Accessibility screen freezes, this adb alternative adds our service while
 
 ```sh
 adb shell '
-service=com.ansub.tvhome/.HomeButton
+service=com.ansub.tvhome.astro/com.ansub.tvhome.HomeButton
 services=$(settings get secure enabled_accessibility_services)
 case "$services" in null|"") services="" ;; esac
 case ":$services:" in
-  *":$service:"*|*":com.ansub.tvhome/com.ansub.tvhome.HomeButton:"*) ;;
+  *":$service:"*) ;;
   *) services="${services:+$services:}$service" ;;
 esac
 settings put secure enabled_accessibility_services "$services"
@@ -211,7 +224,7 @@ keep=""
 IFS=:
 for service in $services; do
   case "$service" in
-    ""|null|com.ansub.tvhome/.HomeButton|com.ansub.tvhome/com.ansub.tvhome.HomeButton) ;;
+    ""|null|com.ansub.tvhome.astro/com.ansub.tvhome.HomeButton) ;;
     *) keep="${keep:+$keep:}$service" ;;
   esac
 done
@@ -338,8 +351,8 @@ adb shell ime set <the keyboard you noted>
   adb shell am start -a com.google.android.settings.USAGE_AND_DIAGNOSTICS_SETTING
   # switch it off on the TV, press Back, then:
   adb shell pm disable-user --user 0 com.google.android.tungsten.setupwraith
-  adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.ansub.tvhome
-  adb shell cmd package set-home-activity com.ansub.tvhome/.MainActivity
+  adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.ansub.tvhome.astro
+  adb shell cmd package set-home-activity com.ansub.tvhome.astro/com.ansub.tvhome.MainActivity
   ```
 
 - **The app buttons on the remote** (YouTube, Netflix and others) stopped working, even for apps that are still installed. TCL sends these buttons through one of its own apps first. We haven't confirmed which one. If you need them, try turning `com.tcl.partnercustomizer` back on, then `com.tcl.ttvs`, with `adb shell pm enable <package>`.
@@ -489,7 +502,7 @@ Your list has one change per line, like `off com.example.app`, `global window_an
 <summary><b>Can I install the home screen without AI?</b></summary>
 <br>
 
-Yes. You only need `adb`. On a Mac, run `brew install android-platform-tools`. On Windows, download Google's [SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools), unzip it, and run the commands below from Git Bash. Download this repo, then:
+Yes. [Build the APK](#build-astro-home) and use `adb` to install it. On a Mac, run `brew install android-platform-tools`. On Windows, download Google's [SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools), unzip it, and run the commands below from Git Bash. Download this repo, then:
 
 ```sh
 sh install.sh <TV_IP>                                               # picks your TV apps for you
@@ -507,7 +520,7 @@ The cleanup half is a judgement call per app, so it's not automated. `sh candida
 <summary><b>How do I change the apps on the home screen?</b></summary>
 <br>
 
-Use the remote. Hold **OK** on an app (or press **Menu**) to:
+Open **Apps & inputs**. Hold **OK** on an app or press **Menu** to edit it.
 
 - **Move** it: use the arrows to slide it to a new spot, then press **OK** to finish.
 - **Replace** it: pick another app to take its place.
@@ -525,7 +538,7 @@ HDMI tiles work the same way. Hold **OK** on one to **Rename** it — TV, PlaySt
 <summary><b>Can I change the background?</b></summary>
 <br>
 
-Yes. Pick the **Settings** tile, then **Wallpaper**. (**TV settings**, right under it, opens the TV's own settings.) There are fourteen gradients. Dark: Dusk (the default), Midnight, Plum, Forest, Graphite, Ocean and Ember. Bright: Sunset, Lagoon, Aurora, Coral, Iris, Meadow and Gold. The background changes as you move through the list; press **OK** to keep one, or **Back** to leave it as it was. They're colours only, no pictures, so every one is just as fast and uses the same memory.
+Yes. Open **Apps & inputs → Settings → Wallpaper**. Use the arrows to preview photos or gradients. Press **OK** to save a choice or **Back** to return to the current wallpaper.
 
 </details>
 
@@ -583,6 +596,7 @@ If the laptop never connects, use the TV's recovery mode or a factory reset. How
 
 </details>
 
+<a id="build-astro-home"></a>
 <details>
 <summary><b>For developers: build it yourself</b></summary>
 <br>
@@ -594,14 +608,14 @@ If the laptop never connects, use the TV's recovery mode or a factory reset. How
    brew install --cask android-commandlinetools
    sdkmanager "platforms;android-34" "build-tools;34.0.0"
    ```
-3. `sh build.sh`, then `sh install.sh <TV_IP>` installs your build instead of the release.
-4. `sh ci/smoke-test.sh <TV_IP or emulator>` checks it all works.
+3. Run `sh build.sh` to create `out/tvhome.apk`. Run `sh install.sh <TV_IP>` to install it.
+4. Run `sh ci/smoke-test.sh <emulator>` on a test device. The smoke test installs Astro Home and removes it when it finishes.
 5. `CLOCK=24 sh install.sh <TV_IP>` sets a 24-hour clock (or `CLOCK=12` for a 12-hour one, `CLOCK=auto` to follow the TV again). On the TV, holding OK on an HDMI tile renames or removes that input.
 6. Testing the input tiles on an emulator, which has no HDMI ports: `FAKE_INPUT=1 sh install.sh <emulator>`. That builds and installs `ci/fake-input` (a TV input service with no hardware behind it) and tells the home screen to show it. `undo.sh` removes it again. It is for emulators only.
 
 HDMI inputs are found on their own. The labels follow the TV's language, with 16 languages built in. To add yours or fix a translation, edit `src/com/ansub/tvhome/Strings.java`. Keep `key.jks`, which is made on your first build: updates must be signed with the same key.
 
-It's one screen of plain Java, no libraries, no Gradle. The background is drawn once, the only animation is the focus lift, and it uses about 30 MB of RAM.
+The launcher uses Android's built-in Java APIs. It loads one wallpaper at a time.
 
 </details>
 

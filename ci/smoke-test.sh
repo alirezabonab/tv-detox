@@ -12,7 +12,7 @@ fail() {
   exit 1
 }
 # Waits up to 15s for the home screen to be in front.
-wait_home() { for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do focus | grep -q com.ansub.tvhome && return 0; sleep 1; done; return 1; }
+wait_home() { for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do focus | grep -Fq "com.ansub.tvhome.astro/" && return 0; sleep 1; done; return 1; }
 ui() { adb -s "$TV" shell "uiautomator dump /sdcard/ui.xml" >/dev/null 2>&1; adb -s "$TV" shell "cat /sdcard/ui.xml"; }
 focus() { adb -s "$TV" shell dumpsys window | grep -m1 mCurrentFocus; }
 
@@ -23,18 +23,26 @@ YES=1 sh install.sh "$TV"
 sleep 3
 home=$(adb -s "$TV" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1 | tr -d '\r')
 case "$home" in
-  com.ansub.tvhome/.MainActivity|org.droidtv.homeintentresolver/*) ;;
+  com.ansub.tvhome.astro/com.ansub.tvhome.MainActivity|org.droidtv.homeintentresolver/*) ;;
   *) fail "default home is $home" ;;
 esac
 adb -s "$TV" shell input keyevent KEYCODE_HOME
 wait_home || fail "home screen not in front"
 
-echo "== home screen shows a clock and Settings"
+echo "== gallery starts collapsed, and OK opens the tiles"
 x=$(ui)
+echo "$x" | grep -q 'text="Apps &amp; inputs"' || fail "no Apps & inputs button"
+adb -s "$TV" shell input keyevent KEYCODE_DPAD_CENTER
+sleep 1
+x=$(ui)
+echo "$x" | grep -q 'text="Hide tiles"' || fail "OK did not open the tiles"
 echo "$x" | grep -q 'text="Settings"' || fail "no Settings tile"
 echo "$x" | grep -qE 'text="[0-9]{1,2}:[0-9]{2}"' || fail "no clock"
 tiles=$(echo "$x" | grep -o 'focusable="true"' | wc -l | tr -d ' ')
-echo "   $tiles tiles"
+echo "   $tiles focusable controls"
+sleep 13
+x=$(ui)
+echo "$x" | grep -q 'text="Apps &amp; inputs"' || fail "the idle timer did not collapse the tiles"
 if [ "$FAKE_INPUT" = 1 ]; then
   echo "== emulator input registered"
   # Its tile may already have a saved name from a previous manual test.
@@ -51,13 +59,15 @@ wait_home || fail "Home didn't come back"
 echo "== custom app list"
 # Use whatever TV app this device has (test images may have none).
 app=$(adb -s "$TV" shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER \
-  | tr -d '\r' | grep / | sed 's|/.*||; s/^ *//' | grep -vx com.ansub.tvhome | head -1)
+  | tr -d '\r' | grep / | sed 's|/.*||; s/^ *//' | grep -Fvx -e com.ansub.tvhome -e com.ansub.tvhome.astro | head -1)
 if [ -n "$app" ]; then
   YES=1 sh install.sh "$TV" "$app"
   adb -s "$TV" shell input keyevent KEYCODE_HOME
   wait_home || fail "home screen not in front after custom list"
+  adb -s "$TV" shell input keyevent KEYCODE_DPAD_CENTER
+  sleep 1
   n=$(ui | grep -o 'focusable="true"' | wc -l | tr -d ' ')
-  [ "$n" -ge 2 ] || fail "custom app $app didn't show up"
+  [ "$n" -ge 3 ] || fail "custom app $app didn't show up"
   echo "   $app shows up"
 else
   echo "   skipped: this device has no TV apps"
@@ -82,6 +92,6 @@ if [ "$FAKE_INPUT" = 1 ]; then
 fi
 sleep 3
 home=$(adb -s "$TV" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1 | tr -d '\r')
-case "$home" in *com.ansub.tvhome*|"") fail "after undo, home is '$home'" ;; esac
+case "$home" in com.ansub.tvhome.astro/*|"") fail "after undo, home is '$home'" ;; esac
 echo "   home is back to $home"
 echo "PASS ($SHOT)"

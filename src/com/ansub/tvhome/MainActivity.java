@@ -15,6 +15,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -33,6 +34,9 @@ import android.net.NetworkRequest;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -74,7 +78,7 @@ import java.util.WeakHashMap;
 public class MainActivity extends Activity {
 
     // Top-row apps, in this order of preference:
-    //  1. a list saved at install time:  am start -n com.ansub.tvhome/.MainActivity --es apps "pkg1,pkg2"
+    //  1. a list saved at install time:  am start -n com.ansub.tvhome.astro/com.ansub.tvhome.MainActivity --es apps "pkg1,pkg2"
     //     (--es apps auto  goes back to 2; add --es stamp <unique> so it's applied only once, see saveConfig)
     //  2. apps.txt (built in as Apps.LIST), topped up with other TV apps installed on this TV.
     // Missing apps are skipped. Topping up stops at six apps, but a chosen list can be any length:
@@ -87,7 +91,7 @@ public class MainActivity extends Activity {
     private static final String PREFS = "config";
     private static final List<String> NOT_APPS = Arrays.asList("com.android.vending", "com.android.tv.settings",
             "com.android.tv", "com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx",
-            "com.google.android.leanbacklauncher");
+            "com.google.android.leanbacklauncher", "com.ansub.tvhome");
     private static final String PLAY_STORE = "com.android.vending";
     private static final String SETTINGS = "settings";
     private static final String ADD = "add";
@@ -116,12 +120,13 @@ public class MainActivity extends Activity {
     private static final String TCL_SHOW_WINDOW = "com.tcl.settings.SHOW_WINDOW";
 
     // Layout is designed at 1920x1080 and scaled to the TV's real UI size by px().
-    private static final int MARGIN = 96, GAP = 36, RADIUS = 26;
+    private static final int MARGIN = 96, GAP = 26, RADIUS = 20;
     // The focus lift: the tile grows, rises, brightens and rounds off a little, then settles.
     // Long enough to read as motion, short enough that a run of d-pad presses never feels behind.
     private static final int FOCUS_MS = 180, RADIUS_UP = 10;
     private static final Interpolator FOCUS_EASE = new DecelerateInterpolator(1.8f);
-    private static final int ROW1_TOP = 604, ROW_STEP = 224;
+    private static final int ROW1_TOP = 616, ROW_STEP = 166, TILE_WIDTH = 190;
+    private static final long TILE_IDLE_MS = 12_000;
     private static final int GRID_MIN_TOP = 400; // more rows push the grid up, but not into the clock
     private static final int ICON_TOP = 76, ICON_BUTTON = 72, ICON_SIZE = 40, ICON_GAP = 12; // level with the date
 
@@ -132,8 +137,11 @@ public class MainActivity extends Activity {
             "com.android.tv.settings.device.displaysound.DisplaySoundActivity"};
     // Wallpapers, saved by name: a gradient top to bottom, then a glow from the top left and one from
     // the bottom right. Dark ones first, then bright ones that get darker towards the bottom, so the
-    // white labels stay easy to read. Only colours, no images, so every one costs the same as Dusk,
-    // the default.
+    // White labels stay easy to read. The photo gallery comes first in the wallpaper picker.
+    private static final String SLIDESHOW = "Photo slideshow";
+    private static final long PHOTO_INTERVAL_MS = 60_000;
+    private static final String[] PHOTOS = {"Milky Way", "Northern Lights", "Andromeda", "Orion Nebula"};
+    private static final String[] PHOTO_ASSETS = {"milky_way", "northern_lights", "andromeda", "orion"};
     private static final String[] WALLPAPER_NAMES = {"Dusk", "Midnight", "Plum", "Forest", "Graphite", "Ocean", "Ember",
             "Sunset", "Lagoon", "Aurora", "Coral", "Iris", "Meadow", "Gold"};
     private static final int[][] WALLPAPERS = {
@@ -152,12 +160,22 @@ public class MainActivity extends Activity {
         {0xFF2E6E4C, 0xFF1C4A40, 0xFF0A201E, 0x90A8E070, 0x6030A8A8},
         {0xFFB07624, 0xFF86401E, 0xFF2A1410, 0x90FFD060, 0x70FF5040},
     };
+    private final Handler photoHandler = new Handler(Looper.getMainLooper());
+    private final Runnable rotatePhoto = this::schedulePhotoRotation;
+    private long slideshowStart = SystemClock.uptimeMillis();
+    private boolean homeResumed, wallpaperPickerOpen;
+    private String visibleWallpaper;
     private float scale = 1f;
 
     private static Typeface regular, semibold;
 
     private FrameLayout root; // the page, inside a vertical scroller
-    private int tileW, tileH, gridTop; // app grid geometry, set by buildTiles
+    private FrameLayout tileGrid;
+    private ScrollView scroller;
+    private TextView tileToggle;
+    private boolean tilesExpanded;
+    private final Runnable collapseTiles = () -> setTilesExpanded(false);
+    private int tileW, gridLeft, gridTop; // app grid geometry, set by buildTiles
     private final List<View> tiles = new ArrayList<>();
     private final Map<View, ValueAnimator> lifts = new WeakHashMap<>(); // a running focus fade per tile
     private boolean dirty = true;
@@ -202,7 +220,7 @@ public class MainActivity extends Activity {
         scale = getResources().getDisplayMetrics().widthPixels / 1920f;
         showWallpaper(wallpaper());
 
-        ScrollView scroller = new ScrollView(this);
+        scroller = new ScrollView(this);
         scroller.setFillViewport(true);
         scroller.setVerticalScrollBarEnabled(false);
         scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -231,12 +249,38 @@ public class MainActivity extends Activity {
         clock.addView(time, tp);
         root.addView(clock, at(px(MARGIN), px(92), -2, -2));
 
+        tileGrid = new FrameLayout(this);
+        tileGrid.setClipChildren(false);
+        tileGrid.setClipToPadding(false);
+        tileGrid.setVisibility(View.GONE);
+        root.addView(tileGrid, new FrameLayout.LayoutParams(-1, -2));
+
         moveHint = text(px(24), 0xA8FFFFFF, regular);
         moveHint.setText(Strings.t("Use the arrows to move it, then press OK"));
         moveHint.setVisibility(View.GONE);
-        root.addView(moveHint, at(px(MARGIN), px(ROW1_TOP - 64), -2, -2));
+        tileGrid.addView(moveHint, at(px(MARGIN), px(ROW1_TOP - 64), -2, -2));
 
-        setContentView(scroller);
+        FrameLayout screen = new FrameLayout(this);
+        screen.addView(scroller, new FrameLayout.LayoutParams(-1, -1));
+        tileToggle = text(px(24), Color.WHITE, semibold);
+        tileToggle.setText("Apps & inputs");
+        tileToggle.setGravity(Gravity.CENTER);
+        tileToggle.setFocusable(true);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setCornerRadius(px(30));
+        pill.setColor(0x80101722);
+        pill.setStroke(px(2), 0x77FFFFFF);
+        tileToggle.setBackground(pill);
+        tileToggle.setOnFocusChangeListener((view, hasFocus) -> {
+            pill.setColor(hasFocus ? 0xA82B3545 : 0x80101722);
+            pill.setStroke(px(2), hasFocus ? 0xCCFFFFFF : 0x77FFFFFF);
+        });
+        tileToggle.setOnClickListener(view -> setTilesExpanded(!tilesExpanded));
+        FrameLayout.LayoutParams togglePosition = new FrameLayout.LayoutParams(
+                px(228), px(60), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        togglePosition.bottomMargin = px(52);
+        screen.addView(tileToggle, togglePosition);
+        setContentView(screen);
 
         IntentFilter f = new IntentFilter();
         f.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -352,8 +396,10 @@ public class MainActivity extends Activity {
             buildTiles();
         }
         refreshNetwork();
-        View f = getCurrentFocus();
-        if (f == null && !tiles.isEmpty()) tiles.get(0).requestFocus();
+        homeResumed = true;
+        schedulePhotoRotation();
+        if (!tilesExpanded || getCurrentFocus() == null) tileToggle.requestFocus();
+        resetTileTimeout();
         HomeButton.onHomeResumed(this); // back on this home screen: Home comes here again
         // Only counted as opened once it has stayed up a moment, so a crash right after opening still
         // counts as a failed launch.
@@ -365,6 +411,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        homeResumed = false;
+        photoHandler.removeCallbacks(rotatePhoto);
+        tileToggle.removeCallbacks(collapseTiles);
+        if (movingKey == null) setTilesExpanded(false);
         // Left normally (an app or Settings opened), so it didn't crash.
         getWindow().getDecorView().removeCallbacks(homeOk);
         HomeButton.onHomeOk(this);
@@ -376,6 +426,7 @@ public class MainActivity extends Activity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) refreshApps();
         else okDownKey = null; // an OK still held finishes in the window that took over
+        resetTileTimeout();
     }
 
     // Rebuilds the tiles if apps changed, but only while Home is in front with no menu open and no
@@ -394,7 +445,42 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    public void onBackPressed() { /* home screen: nothing to go back to */ }
+    public void onBackPressed() {
+        setTilesExpanded(false);
+    }
+
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        resetTileTimeout();
+    }
+
+    private void resetTileTimeout() {
+        tileToggle.removeCallbacks(collapseTiles);
+        if (tilesExpanded && homeResumed && hasWindowFocus() && movingKey == null) {
+            tileToggle.postDelayed(collapseTiles, TILE_IDLE_MS);
+        }
+    }
+
+    private void setTilesExpanded(boolean expanded) {
+        if (tilesExpanded == expanded) return;
+        tilesExpanded = expanded;
+        tileToggle.setText(expanded ? "Hide tiles" : "Apps & inputs");
+        tileGrid.animate().cancel();
+        if (expanded) {
+            tileGrid.setAlpha(0f);
+            tileGrid.setTranslationY(px(18));
+            tileGrid.setVisibility(View.VISIBLE);
+            tileGrid.animate().alpha(1f).translationY(0).setDuration(FOCUS_MS).start();
+            View first = rowApps.isEmpty() ? tile(ADD) : tile(rowApps.get(0));
+            if (first != null) first.requestFocus();
+        } else {
+            tileToggle.requestFocus();
+            tileGrid.setVisibility(View.GONE);
+            scroller.scrollTo(0, 0);
+        }
+        resetTileTimeout();
+    }
 
     // Holding Back opens Google TV's own home screen, where it stays on (see HomeButton). Spotted on a
     // key repeat, or when Back is let go if the remote sends none.
@@ -449,31 +535,94 @@ public class MainActivity extends Activity {
         }
     }
 
-    // The saved wallpaper, as an index into WALLPAPERS (Dusk if none is saved).
-    private int wallpaper() {
-        String saved = getSharedPreferences(PREFS, 0).getString("wallpaper", null);
-        return Math.max(0, Arrays.asList(WALLPAPER_NAMES).indexOf(saved));
+    private BitmapDrawable photo(int index, boolean thumbnail) {
+        String path = "wallpapers/" + PHOTO_ASSETS[index] + (thumbnail ? "_thumb.jpg" : ".jpg");
+        try (java.io.InputStream stream = getAssets().open(path)) {
+            Bitmap bitmap = BitmapFactory.decodeStream(stream);
+            if (bitmap != null) {
+                BitmapDrawable image = new BitmapDrawable(getResources(), bitmap);
+                image.setGravity(Gravity.FILL);
+                return image;
+            }
+        } catch (java.io.IOException ignored) {}
+        return null;
     }
 
-    private void showWallpaper(int i) {
-        getWindow().setBackgroundDrawable(background(WALLPAPERS[i]));
+    private void schedulePhotoRotation() {
+        photoHandler.removeCallbacks(rotatePhoto);
+        if (!homeResumed || wallpaperPickerOpen || !SLIDESHOW.equals(wallpaper())) return;
+        long now = SystemClock.uptimeMillis();
+        long elapsed = now - slideshowStart;
+        showWallpaper(slideshowPhoto(elapsed));
+        photoHandler.postAtTime(rotatePhoto, now + PHOTO_INTERVAL_MS - elapsed % PHOTO_INTERVAL_MS);
     }
 
-    // The wallpapers, each with a small dot of its colours. Moving through the list shows each one
-    // behind the panel; OK keeps it, Back goes back to the one before.
+    private static String slideshowPhoto(long elapsed) {
+        return PHOTOS[(int) ((elapsed / PHOTO_INTERVAL_MS) % PHOTOS.length)];
+    }
+
+    private void showWallpaper(String name) {
+        if (SLIDESHOW.equals(name)) name = slideshowPhoto(SystemClock.uptimeMillis() - slideshowStart);
+        if (name.equals(visibleWallpaper)) return;
+        visibleWallpaper = name;
+        int photoIndex = Arrays.asList(PHOTOS).indexOf(name);
+        if (photoIndex >= 0) {
+            BitmapDrawable image = photo(photoIndex, false);
+            if (image != null) {
+                GradientDrawable shade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                        new int[] {0x50040712, 0x20040712, 0xA8040712});
+                getWindow().setBackgroundDrawable(new LayerDrawable(new Drawable[] {image, shade}));
+                return;
+            }
+        }
+        int gradient = Arrays.asList(WALLPAPER_NAMES).indexOf(name);
+        getWindow().setBackgroundDrawable(background(WALLPAPERS[Math.max(0, gradient)]));
+    }
+
+    private List<String> wallpaperNames() {
+        List<String> names = new ArrayList<>();
+        names.add(SLIDESHOW);
+        names.addAll(Arrays.asList(PHOTOS));
+        names.addAll(Arrays.asList(WALLPAPER_NAMES));
+        return names;
+    }
+
+    private String wallpaper() {
+        String saved = prefs().getString("wallpaper", SLIDESHOW);
+        return wallpaperNames().contains(saved) ? saved : SLIDESHOW;
+    }
+
+    // Arrow keys preview each photo behind the panel. OK saves it and Back restores the selection.
     private void showWallpapers() {
+        List<String> names = wallpaperNames();
         final int size = px(40);
-        panel(Strings.t("Wallpaper"), Arrays.asList(WALLPAPER_NAMES), pos -> {
-            int[] c = WALLPAPERS[pos];
+        wallpaperPickerOpen = true;
+        photoHandler.removeCallbacks(rotatePhoto);
+        Dialog picker = panel(Strings.t("Wallpaper"), names, pos -> {
+            if (pos == 0) return new ColorDrawable(Color.TRANSPARENT);
+            if (pos <= PHOTOS.length) {
+                BitmapDrawable thumbnail = photo(pos - 1, true);
+                if (thumbnail != null) thumbnail.setBounds(0, 0, px(104), px(58));
+                return thumbnail == null ? new ColorDrawable(Color.TRANSPARENT) : thumbnail;
+            }
+            int[] c = WALLPAPERS[pos - PHOTOS.length - 1];
             GradientDrawable dot = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                     new int[] {glow(c[3], c[0]), c[1], glow(c[4], c[0])});
             dot.setShape(GradientDrawable.OVAL);
             dot.setStroke(Math.max(1, px(2)), 0x26FFFFFF);
             dot.setSize(size, size);
             return dot;
-        }, size, wallpaper(), this::showWallpaper, which -> {
-            getSharedPreferences(PREFS, 0).edit().putString("wallpaper", WALLPAPER_NAMES[which]).apply();
-            showWallpaper(which);
+        }, size, names.indexOf(wallpaper()), pos -> showWallpaper(names.get(pos)), pos -> {
+            String selected = names.get(pos);
+            if (SLIDESHOW.equals(selected) && !SLIDESHOW.equals(wallpaper())) {
+                slideshowStart = SystemClock.uptimeMillis();
+            }
+            prefs().edit().putString("wallpaper", selected).apply();
+            showWallpaper(selected);
+        });
+        picker.setOnDismissListener(dialog -> {
+            wallpaperPickerOpen = false;
+            schedulePhotoRotation();
         });
     }
 
@@ -512,10 +661,11 @@ public class MainActivity extends Activity {
 
         PackageManager pm = getPackageManager();
         int m = px(MARGIN), g = px(GAP);
-        int w = (getResources().getDisplayMetrics().widthPixels - 2 * m - g * (PER_ROW - 1)) / PER_ROW;
+        int width = getResources().getDisplayMetrics().widthPixels;
+        int w = Math.min(px(TILE_WIDTH), (width - 2 * m - g * (PER_ROW - 1)) / PER_ROW);
         int h = w * 9 / 16;
         tileW = w;
-        tileH = h;
+        gridLeft = (width - PER_ROW * w - (PER_ROW - 1) * g) / 2;
 
         List<String> apps = appList(pm);
         // Apps fill rows of six. With more rows the grid starts higher, so up to two rows of apps and
@@ -525,8 +675,10 @@ public class MainActivity extends Activity {
         int rows = Math.max(1, (launchable + PER_ROW - 1) / PER_ROW);
         gridTop = Math.max(px(GRID_MIN_TOP), px(ROW1_TOP) - (rows - 1) * px(ROW_STEP));
         int bottomTop = gridTop + rows * px(ROW_STEP);
-        ((FrameLayout.LayoutParams) moveHint.getLayoutParams()).topMargin = gridTop - px(64);
-        root.setMinimumHeight(bottomTop + h + px(MARGIN));
+        FrameLayout.LayoutParams hintPosition = (FrameLayout.LayoutParams) moveHint.getLayoutParams();
+        hintPosition.leftMargin = gridLeft;
+        hintPosition.topMargin = gridTop - px(54);
+        tileGrid.setMinimumHeight(bottomTop + h + px(145));
 
         for (String pkg : apps) {
             Intent li = launchIntent(pm, pkg);
@@ -543,7 +695,7 @@ public class MainActivity extends Activity {
             if (banner == null) try { icon = pm.getApplicationIcon(pkg); } catch (Exception ignored) {}
             int i = rowApps.size();
             rowApps.add(pkg);
-            addTile(root, pkg, label, banner, null, icon, gridX(i), gridY(i), w, h);
+            addTile(tileGrid, pkg, label, banner, null, icon, gridX(i), gridY(i), w, h);
         }
 
         // Bottom row: Play Store, HDMI inputs, Settings and Add app, six at most.
@@ -553,11 +705,11 @@ public class MainActivity extends Activity {
         int room = PER_ROW - 2 - (store ? 1 : 0);
         if (inputs.size() > room) inputs = inputs.subList(0, room);
         if (store)
-            addTile(root, PLAY_STORE, "Play Store", null, LineIcon.PLAY, null, m + col++ * (w + g), bottomTop, w, h);
+            addTile(tileGrid, PLAY_STORE, "Play Store", null, LineIcon.PLAY, null, gridLeft + col++ * (w + g), bottomTop, w, h);
         for (TvInputInfo in : inputs)
-            addTile(root, in.getId(), inputLabel(in), null, LineIcon.HDMI, null, m + col++ * (w + g), bottomTop, w, h);
-        addTile(root, SETTINGS, Strings.t("Settings"), null, LineIcon.SETTINGS, null, m + col++ * (w + g), bottomTop, w, h);
-        addTile(root, ADD, Strings.t("Add app"), null, LineIcon.PLUS, null, m + col * (w + g), bottomTop, w, h);
+            addTile(tileGrid, in.getId(), inputLabel(in), null, LineIcon.HDMI, null, gridLeft + col++ * (w + g), bottomTop, w, h);
+        addTile(tileGrid, SETTINGS, Strings.t("Settings"), null, LineIcon.SETTINGS, null, gridLeft + col++ * (w + g), bottomTop, w, h);
+        addTile(tileGrid, ADD, Strings.t("Add app"), null, LineIcon.PLUS, null, gridLeft + col * (w + g), bottomTop, w, h);
 
         // Plain icons at the top right, level with the date: any settings shortcuts picked, then the
         // network icon. Added last, so the first app keeps first focus; Up from the apps reaches them.
@@ -580,7 +732,7 @@ public class MainActivity extends Activity {
             want = rowApps.isEmpty() ? ADD : rowApps.get(Math.min(wantAt, rowApps.size() - 1));
         View restore = null;
         for (View t : tiles) if (t.getTag().equals(want)) restore = t;
-        if (restore != null) restore.requestFocus();
+        if (restore != null && restore.isShown()) restore.requestFocus();
     }
 
     private void addTile(ViewGroup parent, final String key, String label, Drawable banner, int[] lineIcon, Drawable appIcon,
@@ -601,18 +753,18 @@ public class MainActivity extends Activity {
             inner.setOrientation(LinearLayout.VERTICAL);
             inner.setGravity(Gravity.CENTER);
             ImageView iv = new ImageView(this);
-            int size = lineIcon != null ? px(44) : px(64);
+            int size = lineIcon != null ? px(34) : px(46);
             if (lineIcon != null) iv.setImageDrawable(new LineIcon(lineIcon));
             else if (appIcon != null) iv.setImageDrawable(fit(appIcon, size, size));
             inner.addView(iv, new LinearLayout.LayoutParams(size, size));
-            TextView t = text(px(24), 0xE0FFFFFF, regular);
+            TextView t = text(px(21), 0xE0FFFFFF, regular);
             t.setText(label);
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
             t.setGravity(Gravity.CENTER);
             t.setPadding(px(16), 0, px(16), 0);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.topMargin = px(12);
+            lp.topMargin = px(7);
             inner.addView(t, lp);
             card.addView(inner, new FrameLayout.LayoutParams(-1, -1));
         }
@@ -620,9 +772,10 @@ public class MainActivity extends Activity {
         card.setClipToOutline(true);
         card.setFocusable(true);
         card.setTag(key);
+        card.setContentDescription(label);
 
         // Banner tiles show their name underneath when focused.
-        final TextView caption = banner == null ? null : text(px(24), Color.WHITE, regular);
+        final TextView caption = banner == null ? null : text(px(21), Color.WHITE, regular);
         if (caption != null) {
             caption.setText(label);
             caption.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -688,7 +841,7 @@ public class MainActivity extends Activity {
         wrap.addView(card, new FrameLayout.LayoutParams(w, h));
         if (caption != null) {
             FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(w, -2);
-            cp.topMargin = h + px(22);
+            cp.topMargin = h + px(16);
             wrap.addView(caption, cp);
         }
         parent.addView(wrap, at(x, y, w, -2));
@@ -973,7 +1126,7 @@ public class MainActivity extends Activity {
     // glass focus as the tiles. Back closes it. icon (or null) puts an icon of that size by each name.
     // With preview, the list starts on selected and moving through it calls preview; Back calls it
     // with selected again, to put things back.
-    private void panel(String title, final List<String> labels, final Icon icon, final int size,
+    private Dialog panel(String title, final List<String> labels, final Icon icon, final int size,
                        final int selected, final Pick preview, final Pick pick) {
         final Dialog d = new Dialog(this, android.R.style.Theme_Material_Dialog_NoActionBar);
         LinearLayout box = new LinearLayout(this);
@@ -1012,7 +1165,7 @@ public class MainActivity extends Activity {
                 if (icon != null && icons[pos] == null) {
                     try { icons[pos] = icon.at(pos); }
                     catch (Exception e) { icons[pos] = new ColorDrawable(Color.TRANSPARENT); }
-                    icons[pos].setBounds(0, 0, size, size);
+                    if (icons[pos].getBounds().isEmpty()) icons[pos].setBounds(0, 0, size, size);
                 }
                 t.setCompoundDrawablesRelative(icons[pos], null, null, null);
                 t.setCompoundDrawablePadding(px(24));
@@ -1044,6 +1197,7 @@ public class MainActivity extends Activity {
         w.setGravity(Gravity.END);
         w.setDimAmount(preview != null ? 0f : 0.5f); // a preview needs the home screen undimmed
         d.show();
+        return d;
     }
 
     // A small menu that drops down under a tile, in the same glass as the tiles. Opens above the
@@ -1339,7 +1493,7 @@ public class MainActivity extends Activity {
 
     // Where app number i sits in the grid.
     private int gridX(int i) {
-        return px(MARGIN) + (i % PER_ROW) * (tileW + px(GAP));
+        return gridLeft + (i % PER_ROW) * (tileW + px(GAP));
     }
 
     private int gridY(int i) {
@@ -1394,6 +1548,7 @@ public class MainActivity extends Activity {
                 moveHint.setVisibility(View.GONE);
                 saveRow();
                 refreshApps();
+                resetTileTimeout();
             }
             return true;
         }

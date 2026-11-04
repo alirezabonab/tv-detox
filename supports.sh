@@ -75,7 +75,7 @@ else
   echo "   That is the step people undo most often, so keep the TV reachable while you run it."
 fi
 
-if [ -n "$CURRENT" ] && [ "$CURRENT" != "com.ansub.tvhome/.MainActivity" ]; then
+if [ -n "$CURRENT" ] && [ "$CURRENT" != "com.ansub.tvhome.astro/com.ansub.tvhome.MainActivity" ]; then
   echo "   This home screen is not installed as Home yet."
 fi
 

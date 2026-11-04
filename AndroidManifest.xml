@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.ansub.tvhome" android:versionCode="20" android:versionName="1.5.7">
+    package="com.ansub.tvhome.astro" android:versionCode="23" android:versionName="1.5.7-astro.4">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
     <!-- Only for the network tile: Wi-Fi, Ethernet or offline, and the Wi-Fi signal. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -33,9 +33,9 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <application android:label="Home" android:allowBackup="false" android:banner="@drawable/banner" android:icon="@drawable/icon"
+    <application android:label="Astro Home" android:allowBackup="false" android:banner="@drawable/banner" android:icon="@drawable/icon"
         android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
-        <activity android:name=".MainActivity"
+        <activity android:name="com.ansub.tvhome.MainActivity"
             android:exported="true"
             android:launchMode="singleTask" android:stateNotNeeded="true"
             android:clearTaskOnLaunch="true" android:excludeFromRecents="true"
@@ -53,7 +53,7 @@
             </intent-filter>
         </activity>
         <!-- Opt-in: makes Home open this home screen where the TV's own has to stay on (Google TV). -->
-        <service android:name=".HomeButton" android:label="Home button" android:exported="true"
+        <service android:name="com.ansub.tvhome.HomeButton" android:label="Home button" android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

@@ -43,7 +43,7 @@ put_setting() { sh_tv settings put "$1" "$2" "$3"; }
 config_is() { [ "$(sh_tv device_config get "$1" "$2")" = "$3" ]; }
 put_config() { sh_tv device_config put "$1" "$2" "$3"; }
 
-ME=com.ansub.tvhome/.MainActivity
+ME=com.ansub.tvhome.astro/com.ansub.tvhome.MainActivity
 home() { sh_tv cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1; }
 # Read a foreground component; an empty result cannot verify Home routing.
 foreground() {
@@ -69,7 +69,7 @@ home_opens_me() {
     sleep 1
     front=$(foreground)
     case "$front" in
-      com.ansub.tvhome/*|"") ;;
+      com.ansub.tvhome.astro/*|"") ;;
       */*) away=1; break ;;
     esac
   done
@@ -79,13 +79,13 @@ home_opens_me() {
     sleep 1
     front=$(foreground)
     case "$front" in
-      "$ME"|com.ansub.tvhome/com.ansub.tvhome.MainActivity) return 0 ;;
+      "$ME") return 0 ;;
     esac
   done
   return 1
 }
 home_is_me() { home_opens_me "$(home)"; }
-make_me_home() { sh_tv cmd role add-role-holder --user 0 android.app.role.HOME com.ansub.tvhome; sh_tv cmd package set-home-activity "$ME"; }
+make_me_home() { sh_tv cmd role add-role-holder --user 0 android.app.role.HOME com.ansub.tvhome.astro; sh_tv cmd package set-home-activity "$ME"; }
 echo "Home screen"
 # The TV's own launchers first: while one is on, Home can't be fixed.
 # In the same argument as cat: Git Bash on Windows turns an argument that starts with / into a Windows path.

@@ -78,7 +78,7 @@ KEEP="com.google.android.apps.mediashell com.google.android.katniss
 com.google.android.tv.assistant com.google.android.marvin.talkback
 com.google.android.tv.remote.service com.google.android.tts
 com.google.android.syncadapters.contacts com.google.android.syncadapters.calendar
-com.ansub.tvhome com.google.android.webview com.tcl.android.webview
+com.ansub.tvhome com.ansub.tvhome.astro com.google.android.webview com.tcl.android.webview
 com.tcl.micmanager
 com.android.dreams.basic com.google.android.apps.tv.dreamx"
 
@@ -183,6 +183,7 @@ com.dolby.android.audio.service	Dolby audio
 org.droidtv.homeintentresolver	Philips Home key router
 org.droidtv.GlobalKey	Philips remote buttons
 com.ansub.tvhome	TV Detox home screen
+com.ansub.tvhome.astro	Astro Home
 com.tcl.inputmethod.international	TV keyboard
 com.google.android.webview	Web pages inside apps
 com.tcl.android.webview	Web pages inside apps
