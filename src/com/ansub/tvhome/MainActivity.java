@@ -125,13 +125,13 @@ public class MainActivity extends Activity {
     // Long enough to read as motion, short enough that a run of d-pad presses never feels behind.
     private static final int FOCUS_MS = 180, RADIUS_UP = 10;
     private static final Interpolator FOCUS_EASE = new DecelerateInterpolator(1.8f);
-    private static final int ROW1_TOP = 616, ROW_STEP = 166, TILE_WIDTH = 190;
+    private static final int ROW1_TOP = 642, ROW_STEP = 166, TILE_WIDTH = 190;
     private static final long TILE_IDLE_MS = 12_000;
-    private static final int GRID_MIN_TOP = 500; // more rows push the grid up, but not into the clock
+    private static final int GRID_MIN_TOP = 630; // more rows push the grid up, but not into the clock
     private static final int ICON_TOP = 76, ICON_BUTTON = 72, ICON_SIZE = 40, ICON_GAP = 12; // level with the date
 
     // The Settings tile opens a small menu: the home screen's own settings, then the TV's.
-    private static final String[] SETTINGS_ITEMS = {"Wallpaper", "Brightness", "TV settings"};
+    private static final String[] SETTINGS_ITEMS = {"Wallpaper", "Brightness", "TV settings", "Weather data"};
     // Android TV 11 and later (Google TV too) has no Display page, but its "Display & Sound" page holds Picture.
     private static final String[] TV_DISPLAY_SOUND = {"com.android.tv.settings",
             "com.android.tv.settings.device.displaysound.DisplaySoundActivity"};
@@ -252,6 +252,13 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams weatherPosition = new LinearLayout.LayoutParams(px(410), -2);
         weatherPosition.topMargin = px(14);
         clock.addView(weather, weatherPosition);
+        time.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int clockWidth = right - left;
+            if (clockWidth > 0 && weatherPosition.width != clockWidth) {
+                weatherPosition.width = clockWidth;
+                weather.setLayoutParams(weatherPosition);
+            }
+        });
         root.addView(clock, at(px(MARGIN), px(92), -2, -2));
 
         tileGrid = new FrameLayout(this);
@@ -684,7 +691,7 @@ public class MainActivity extends Activity {
         gridTop = Math.max(px(GRID_MIN_TOP), px(ROW1_TOP) - (rows - 1) * px(ROW_STEP));
         int bottomTop = gridTop + rows * px(ROW_STEP);
         FrameLayout.LayoutParams hintPosition = (FrameLayout.LayoutParams) moveHint.getLayoutParams();
-        hintPosition.leftMargin = gridLeft;
+        hintPosition.leftMargin = Math.max(gridLeft, px(720));
         hintPosition.topMargin = gridTop - px(54);
         tileGrid.setMinimumHeight(bottomTop + h + px(145));
 
@@ -944,7 +951,13 @@ public class MainActivity extends Activity {
             dropdown(tile(SETTINGS), items, which -> {
                 if ("Wallpaper".equals(items[which])) showWallpapers();
                 else if ("Brightness".equals(items[which])) openBrightness();
-                else openTvSettings();
+                else if ("Weather data".equals(items[which])) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Weather data")
+                            .setMessage("Weather data by Open-Meteo (open-meteo.com), licensed under CC BY 4.0. Temperatures are rounded to whole degrees Celsius.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                } else openTvSettings();
             });
             return;
         } else if (isInput(key)) {
